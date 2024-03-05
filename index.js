@@ -1,3 +1,4 @@
+// Express package to simply create web application
 const express = require("express");
 
 // Running the express package put in variable called app
@@ -11,11 +12,21 @@ app.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
 
+// Variable holding the file system module
+const fs = require("fs");
+
+// Variable holding the "express-fileupload" package which allows you to take file sent to endpoint and upload to S3
+const fileUpload = require("express-fileupload");
+
+// Tells Express to use the file upload middleware
+app.use(fileUpload());
+
 // Variable holding some classes from AWS SDK: S3 Client as well as commands to list and put objects
 const {
   S3Client,
   ListObjectsV2Command,
   PutObjectCommand,
+  GetObjectCommand,
 } = require("@aws-sdk/client-s3");
 
 // Variable holding initiatated client object from S3Client above passing in configuration object
@@ -25,32 +36,78 @@ const s3Client = new S3Client({
   forcePathStyle: true,
 });
 
-let listObjectsParams = {
-  Bucket: "my-cool-local-bucket",
-};
-
+// Variable holding the bucket name
 const IMAGES_BUCKET = "my-cool-local-bucket";
 
-listObjectsCmd = new ListObjectsV2Command(listObjectsParams);
+// Variable holding configuration object being passed into S3Client client class
+const listObjectsParams = {
+  Bucket: IMAGES_BUCKET,
+};
 
-s3Client.send(listObjectsCmd);
+// Variable holding the command to list objects in S3 bucket
+let listObjectsCmd = new ListObjectsV2Command(listObjectsParams);
+
+// Variable holding the path to the folder where images will be uploaded to
+const UPLOAD_TEMP_PATH =
+  "/Users/bondcab/Documents/GitHub/CF-CC-2.4/uploaded_images";
 
 // Endpoint returning the list of objects
 app.get("/images", (req, res) => {
-  listObjectsParams = {
-    Bucket: IMAGES_BUCKET,
-  };
-  s3Client
-    .send(new ListObjectsV2Command(listObjectsParams))
-    .then((listObjectsResponse) => {
-      res.send(listObjectsResponse);
-    });
+  s3Client.send(listObjectsCmd).then((listObjectsResponse) => {
+    res.send(listObjectsResponse);
+  });
 });
-
-const fs = require("fs");
-const fileUpload = require("express-fileupload");
 
 // Endpoint to check application response
 app.get("/", (req, res) => {
   res.status(200).send("Application running");
+  console.log("Current file path directory: ", currentFilePath);
+  console.log("Current directory path: ", currentDir);
+});
+
+// Endpoint which handles file uploads
+app.post("/images", (req, res) => {
+  try {
+    const file = req.files.image; // Variable holding the information extracted from the request file object via "express-fileupload"
+    const fileName = req.files.image.name; // Variable holding the name of the image
+    const tempPath = `${UPLOAD_TEMP_PATH}/${fileName}`; // Variable holding the file path you want image moved into to temporarily
+
+    const fileContent = fs.readFileSync(tempPath);
+
+    // Variable holding configurarion object for uploading object command
+    const uploadObjectsParams = {
+      Body: fileContent,
+      Bucket: IMAGES_BUCKET,
+      Key: fileName,
+    };
+
+    // Variable holding the command to upload objects to S3 bucket
+    let uploadObjectsCmd = new PutObjectCommand(uploadObjectsParams);
+
+    // Moves the file sent in to the temporary file path
+    file.mv(tempPath, (err) => {
+      res.status(500);
+    });
+
+    s3Client.send(uploadObjectsCmd);
+
+    res.status(200).send("Image uploaded successfully");
+  } catch (error) {
+    console.error("Error uploading image: ", error);
+  }
+});
+
+// Endpoint for getting object from S3 bucket
+app.get("/image/:key", (req, res) => {
+  const key = req.params.key;
+  console.log("Object key requested: ", key);
+
+  const getObjectParams = {
+    Bucket: IMAGES_BUCKET,
+    Key: key,
+  };
+
+  const getObjectCommand = new GetObjectCommand(getObjectParams);
+
+  s3Client.send(getObjectCommand);
 });
