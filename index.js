@@ -102,12 +102,29 @@ app.get("/image/:key", (req, res) => {
   const key = req.params.key;
   console.log("Object key requested: ", key);
 
+  // Parameters for the GetObjectCommand
   const getObjectParams = {
     Bucket: IMAGES_BUCKET,
     Key: key,
   };
 
+  // Variable holding the GetObjectCommand
   const getObjectCommand = new GetObjectCommand(getObjectParams);
 
-  s3Client.send(getObjectCommand);
+  s3Client
+    .send(getObjectCommand)
+    .then((s3Response) => {
+      // Check if the response contains the Body property
+      if (s3Response.Body) {
+        // Pipe the Body stream (image data) to the response stream
+        s3Response.Body.pipe(res);
+      } else {
+        // Handle case where Body is not available
+        res.status(500).send("Error: Image data not available");
+      }
+    })
+    .catch((error) => {
+      console.error("Error fetching object from S3:", error);
+      res.status(500).send("Error fetching object from S3");
+    });
 });
