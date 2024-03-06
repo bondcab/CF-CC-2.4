@@ -1,6 +1,9 @@
 // Express package to simply create web application
 const express = require("express");
 
+// Get path package
+const path = require("path");
+
 // Running the express package put in variable called app
 const app = express();
 
@@ -48,8 +51,7 @@ const listObjectsParams = {
 let listObjectsCmd = new ListObjectsV2Command(listObjectsParams);
 
 // Variable holding the path to the folder where images will be uploaded to
-const UPLOAD_TEMP_PATH =
-  "/Users/bondcab/Documents/GitHub/CF-CC-2.4/uploaded_images";
+const UPLOAD_TEMP_PATH = path.join(__dirname, "uploaded_images");
 
 // Endpoint returning the list of objects
 app.get("/images", (req, res) => {
@@ -60,19 +62,27 @@ app.get("/images", (req, res) => {
 
 // Endpoint to check application response
 app.get("/", (req, res) => {
-  res.status(200).send("Application running");
-  console.log("Current file path directory: ", currentFilePath);
-  console.log("Current directory path: ", currentDir);
+  res.status(200).send("Current directory: " + UPLOAD_TEMP_PATH);
 });
 
 // Endpoint which handles file uploads
-app.post("/images", (req, res) => {
+app.post("/images", async (req, res) => {
   try {
     const file = req.files.image; // Variable holding the information extracted from the request file object via "express-fileupload"
     const fileName = req.files.image.name; // Variable holding the name of the image
     const tempPath = `${UPLOAD_TEMP_PATH}/${fileName}`; // Variable holding the file path you want image moved into to temporarily
 
-    const fileContent = fs.readFileSync(tempPath);
+    await new Promise((resolve, reject) => {
+      file.mc(tempPath, (err) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    const fileContent = await fs.promises.readFile(tempPath);
 
     // Variable holding configurarion object for uploading object command
     const uploadObjectsParams = {
@@ -84,16 +94,12 @@ app.post("/images", (req, res) => {
     // Variable holding the command to upload objects to S3 bucket
     let uploadObjectsCmd = new PutObjectCommand(uploadObjectsParams);
 
-    // Moves the file sent in to the temporary file path
-    file.mv(tempPath, (err) => {
-      res.status(500);
-    });
-
     s3Client.send(uploadObjectsCmd);
 
     res.status(200).send("Image uploaded successfully");
   } catch (error) {
     console.error("Error uploading image: ", error);
+    res.status(500).send("Error uploading image");
   }
 });
 
